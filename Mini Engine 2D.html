@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mini Engine 2D</title>
+<style>
+:root{--bg:#eef0f6;--panel:#fff;--ink:#181a24;--mute:#666b80;--line:#d6d9e6;--acc:#4f46e5;--accink:#fff;--code:#f7f8fc;--err:#c62828;--warn:#9a6200;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12131a;--panel:#1b1d28;--ink:#e8e9f2;--mute:#9a9fb5;--line:#2f3243;--acc:#8b93ff;--accink:#10112a;--code:#151722;--err:#ff8a80;--warn:#f0b955;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12131a;--panel:#1b1d28;--ink:#e8e9f2;--mute:#9a9fb5;--line:#2f3243;--acc:#8b93ff;--accink:#10112a;--code:#151722;--err:#ff8a80;--warn:#f0b955;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:17px;margin:0 auto 0 0;letter-spacing:-.01em}
+h2{font-size:13px;margin:0 0 8px;font-weight:650}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:7px;padding:6px 12px;cursor:pointer}
+button:hover,.btn:hover{border-color:var(--acc)}
+button.go{background:var(--acc);border-color:var(--acc);color:var(--accink);font-weight:650}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+header label{color:var(--mute);display:flex;gap:5px;align-items:center}
+main{display:grid;grid-template-columns:210px minmax(0,1.1fr) minmax(0,1fr);gap:12px;padding:12px}
+@media(max-width:1000px){main{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;min-width:0;margin-bottom:12px}
+canvas{width:100%;aspect-ratio:16/9;background:#000;border-radius:7px;display:block;outline:none}
+canvas:focus-visible{outline:2px solid var(--acc)}
+#con{height:150px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--code);border-radius:7px;padding:8px}
+#con .e{color:var(--err)}#con .w{color:var(--warn)}#con .i{color:var(--mute)}
+#ed{width:100%;height:440px;resize:vertical;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;background:var(--code);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:10px;tab-size:2;white-space:pre}
+#drop{border:1.5px dashed var(--line);border-radius:8px;padding:12px;text-align:center;color:var(--mute);margin-bottom:8px}
+#drop.over{border-color:var(--acc);color:var(--acc)}
+#assets{list-style:none;margin:0;padding:0;display:grid;gap:5px}
+#assets li{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:7px;padding:4px}
+#assets img,#assets .ic{width:30px;height:30px;object-fit:contain;background:var(--code);border-radius:4px;flex:none;display:grid;place-items:center}
+#assets .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:none;text-align:left;padding:2px}
+#assets .x{border:0;background:none;color:var(--mute);padding:2px 6px}
+.hint{color:var(--mute);font-size:12px;margin:6px 0 0}
+details{margin-top:8px}summary{cursor:pointer;color:var(--mute)}
+pre.api{white-space:pre-wrap;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;background:var(--code);padding:8px;border-radius:7px;margin:6px 0 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>Mini Engine 2D</h1>
+  <label><input type="checkbox" id="dbg" checked> Debug overlay</label>
+  <button id="reset">Reset code</button>
+  <button id="stop">Stop</button>
+  <button id="run" class="go">Run (Ctrl+Enter)</button>
+</header>
+<main>
+  <aside>
+    <div class="card">
+      <h2>Assets</h2>
+      <div id="drop">Drop images or sounds here<br><label class="btn" style="display:inline-block;margin-top:6px">Choose files<input id="file" type="file" multiple accept="image/*,audio/*" hidden></label></div>
+      <ul id="assets"></ul>
+      <p class="hint">Click a name to insert it into your code at the cursor.</p>
+    </div>
+  </aside>
+  <section>
+    <div class="card"><canvas id="cv" tabindex="0" aria-label="Game view"></canvas></div>
+    <div class="card"><h2>Console</h2><div id="con" role="log"></div></div>
+  </section>
+  <section>
+    <div class="card">
+      <h2>Game code (JavaScript)</h2>
+      <textarea id="ed" spellcheck="false" aria-label="Game code"></textarea>
+      <details><summary>API reference</summary>
+<pre class="api">scene(name, fn)        define a scene; the first one starts
+go(name)               switch scene (applied at end of frame)
+add({...})             create a game object, returns it
+  x y w h rot scale flip color sprite text size layer
+  tag solid body gravity vx vy grounded ui visible
+  update(dt)           runs every frame, "this" is the object
+obj.addComponent({name, start(), update(dt), render(ctx)})
+obj.getComponent(name)   obj.destroy()   obj.touches(other)
+find(tag)              all live objects with that tag
+onCollide(tagA, tagB, (a, b) =&gt; {})
+onUpdate(dt =&gt; {})     scene-level update
+bg(color)              scene background
+camera.follow(obj, followY=true)  camera.x .y .zoom
+key.down(k) key.pressed(k) key.released(k)
+  k: left right up down space enter a-z ...
+mouse.x .y (screen)  .wx .wy (world)  .down  .pressed
+play(sound, volume)  log(...)  rand(min, max)  W, H (640x360)
+
+Physics: solid objects block objects with body:true.
+ui:true objects ignore the camera (good for HUD text).</pre>
+      </details>
+    </div>
+  </section>
+</main>
+<script>
+(()=>{
+const W=640,H=360,$=s=>document.querySelector(s);
+const cv=$('#cv'),ctx=cv.getContext('2d'),con=$('#con'),ed=$('#ed'),dbg=$('#dbg');
+cv.width=W;cv.height=H;
+
+/* ---------- Console ---------- */
+const out=(t,c)=>{const d=document.createElement('div');d.className=c||'';d.textContent=t;con.appendChild(d);while(con.children.length>200)con.firstChild.remove();con.scrollTop=1e9};
+const str=x=>{if(typeof x!=='object'||x===null)return String(x);try{return JSON.stringify(x)}catch(e){return String(x)}};
+const log=(...a)=>out(a.map(str).join(' '));
+const warned=new Set(),warn=m=>{if(!warned.has(m)){warned.add(m);out('\u26A0 '+m,'w')}};
+const fail=e=>out('\u2716 '+(e&&e.message||e),'e');
+
+/* ---------- Asset manager (cache by file name) ---------- */
+const Assets={m:new Map(),
+  async add(f){
+    const url=URL.createObjectURL(f),t=f.type.split('/')[0];let el;
+    if(t==='image'){el=new Image();await new Promise((ok,no)=>{el.onload=ok;el.onerror=()=>no(new Error('Could not read image '+f.name));el.src=url})}
+    else if(t==='audio'){el=new Audio(url)}
+    else throw new Error('Unsupported file: '+f.name+' (use images or audio)');
+    this.del(f.name);this.m.set(f.name,{name:f.name,url,el,t});log('Loaded asset: '+f.name);this.draw()},
+  get(n){const a=this.m.get(n);if(!a)warn('Asset not found: '+n);return a&&a.el},
+  peek(n){const a=this.m.get(n);return a&&a.t==='image'?a.el:null},
+  del(n){const a=this.m.get(n);if(a){URL.revokeObjectURL(a.url);this.m.delete(n);this.draw()}},
+  draw(){
+    const ul=$('#assets');ul.textContent='';
+    for(const a of this.m.values()){
+      const li=document.createElement('li');
+      let th;if(a.t==='image'){th=document.createElement('img');th.src=a.url;th.alt=''}else{th=document.createElement('span');th.className='ic';th.textContent='\u266A'}
+      const nm=document.createElement('button');nm.className='nm';nm.textContent=a.name;nm.title='Insert into code';
+      nm.onclick=()=>{ed.setRangeText("'"+a.name+"'",ed.selectionStart,ed.selectionEnd,'end');ed.focus()};
+      const x=document.createElement('button');x.className='x';x.textContent='\u2715';x.title='Remove';x.setAttribute('aria-label','Remove '+a.name);x.onclick=()=>this.del(a.name);
+      li.append(th,nm,x);ul.appendChild(li)}
+  }};
+async function addFiles(fs){for(const f of fs){try{await Assets.add(f)}catch(e){fail(e)}}}
+$('#file').onchange=e=>{addFiles(e.target.files);e.target.value=''};
+const drop=$('#drop');
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');addFiles(e.dataTransfer.files)};
+
+/* ---------- Input ---------- */
+const al={left:'arrowleft',right:'arrowright',up:'arrowup',down:'arrowdown',' ':'space'};
+const nk=k=>{k=String(k).toLowerCase();return al[k]||k};
+const K={d:new Set(),p:new Set(),r:new Set()};
+const key={down:k=>K.d.has(nk(k)),pressed:k=>K.p.has(nk(k)),released:k=>K.r.has(nk(k))};
+const mouse={x:0,y:0,wx:0,wy:0,down:false,pressed:false};
+const typing=()=>/TEXTAREA|INPUT/.test(document.activeElement.tagName);
+addEventListener('keydown',e=>{if(typing())return;const k=nk(e.key);if(!K.d.has(k))K.p.add(k);K.d.add(k);
+  if(running&&['arrowleft','arrowright','arrowup','arrowdown','space'].includes(k))e.preventDefault()});
+addEventListener('keyup',e=>{const k=nk(e.key);K.d.delete(k);K.r.add(k)});
+addEventListener('blur',()=>K.d.clear());
+const mpos=e=>{const r=cv.getBoundingClientRect();mouse.x=(e.clientX-r.left)*W/r.width;mouse.y=(e.clientY-r.top)*H/r.height};
+cv.addEventListener('pointermove',mpos);
+cv.addEventListener('pointerdown',e=>{mpos(e);mouse.down=true;mouse.pressed=true;cv.focus()});
+addEventListener('pointerup',()=>mouse.down=false);
+
+/* ---------- Game objects and components ---------- */
+class GameObject{
+  constructor(p={}){
+    const im=p.sprite&&Assets.peek(p.sprite);
+    Object.assign(this,{name:'object',x:0,y:0,w:im?im.width:32,h:im?im.height:32,rot:0,scale:1,flip:false,color:null,sprite:null,text:null,size:16,
+      tag:'',solid:false,body:false,gravity:0,vx:0,vy:0,grounded:false,layer:0,ui:false,visible:true,update:null},p);
+    this.alive=true;this.comps=[];
+  }
+  addComponent(c){c.owner=this;this.comps.push(c);c.start&&c.start();return c}
+  getComponent(n){return this.comps.find(c=>c.name===n)}
+  destroy(){this.alive=false}
+  touches(o){return this.x<o.x+o.w&&this.x+this.w>o.x&&this.y<o.y+o.h&&this.y+this.h>o.y}
+}
+
+/* ---------- Scene manager and camera ---------- */
+let S=null,pending=null,first=null,running=false,raf=0,last=0,fps=60,ms=0;
+const defs=new Map();
+const camera={x:W/2,y:H/2,zoom:1,target:null,fy:true,follow(o,y=true){this.target=o;this.fy=y}};
+const need=n=>{if(!S)throw new Error(n+'() must be called inside a scene')};
+const scene=(n,fn)=>{defs.set(n,fn);if(!first)first=n};
+const start=n=>{first=n};
+const go=n=>{if(!defs.has(n))throw new Error('No scene named "'+n+'"');pending=n};
+const add=p=>{need('add');const o=new GameObject(p);S.objs.push(o);return o};
+const find=t=>S?S.objs.filter(o=>o.alive&&o.tag===t):[];
+const onCollide=(a,b,fn)=>{need('onCollide');S.cols.push([a,b,fn])};
+const onUpdate=fn=>{need('onUpdate');S.ups.push(fn)};
+const bg=c=>{need('bg');S.bg=c};
+const rand=(a,b)=>a+Math.random()*(b-a);
+const play=(n,v=1)=>{const a=Assets.get(n);if(a&&a.cloneNode){const c=a.cloneNode();c.volume=Math.max(0,Math.min(1,v));c.play().catch(()=>{})}};
+function load(n){
+  S={name:n,objs:[],cols:[],ups:[],bg:'#1b2033'};
+  Object.assign(camera,{x:W/2,y:H/2,zoom:1,target:null,fy:true});
+  defs.get(n)();log('Scene: '+n);
+}
+
+/* ---------- Basic physics (AABB, axis-separated) ---------- */
+function phys(o,dt,solids){
+  o.vy+=o.gravity*dt;o.grounded=false;
+  o.x+=o.vx*dt;
+  for(const s of solids)if(s!==o&&o.touches(s)){if(o.vx>0)o.x=s.x-o.w;else if(o.vx<0)o.x=s.x+s.w;o.vx=0}
+  o.y+=o.vy*dt;
+  for(const s of solids)if(s!==o&&o.touches(s)){if(o.vy>0){o.y=s.y-o.h;o.grounded=true}else if(o.vy<0)o.y=s.y+s.h;o.vy=0}
+}
+
+/* ---------- Update ---------- */
+function update(dt){
+  const sc=S,objs=sc.objs;
+  for(const o of objs){if(!o.alive)continue;
+    for(const c of o.comps)c.update&&c.update(dt);
+    o.update&&o.update(dt,o)}
+  for(const f of sc.ups)f(dt);
+  const solids=objs.filter(o=>o.alive&&o.solid);
+  for(const o of objs)if(o.alive&&o.body)phys(o,dt,solids);
+  for(const [a,b,fn] of sc.cols)
+    for(const A of objs)if(A.alive&&A.tag===a)
+      for(const B of objs)if(B.alive&&B!==A&&B.tag===b&&A.touches(B))fn(A,B);
+  const t=camera.target;
+  if(t&&t.alive){const k=Math.min(1,dt*8);camera.x+=(t.x+t.w/2-camera.x)*k;if(camera.fy)camera.y+=(t.y+t.h/2-camera.y)*k}
+  const alive=objs.filter(o=>o.alive);if(alive.length!==objs.length)sc.objs=alive;
+}
+
+/* ---------- Renderer ---------- */
+function draw(o){
+  ctx.save();ctx.translate(o.x+o.w/2,o.y+o.h/2);ctx.rotate(o.rot*Math.PI/180);ctx.scale(o.flip?-o.scale:o.scale,o.scale);
+  const im=o.sprite&&Assets.get(o.sprite);
+  if(im&&im.width)ctx.drawImage(im,-o.w/2,-o.h/2,o.w,o.h);
+  else if(o.text==null){ctx.fillStyle=o.color||'#8892b0';ctx.fillRect(-o.w/2,-o.h/2,o.w,o.h)}
+  if(o.text!=null){ctx.fillStyle=o.color||'#fff';ctx.font=o.size+'px system-ui,sans-serif';ctx.textBaseline='top';ctx.fillText(o.text,-o.w/2,-o.h/2)}
+  for(const c of o.comps)c.render&&c.render(ctx);
+  ctx.restore();
+}
+function render(){
+  ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle=S?S.bg:'#000';ctx.fillRect(0,0,W,H);
+  if(!S)return;
+  const L=S.objs.filter(o=>o.alive&&o.visible).sort((a,b)=>a.layer-b.layer);
+  for(const ui of [false,true]){
+    ctx.save();
+    if(!ui){ctx.translate(W/2,H/2);ctx.scale(camera.zoom,camera.zoom);ctx.translate(-camera.x,-camera.y)}
+    for(const o of L)if(o.ui===ui)draw(o);
+    ctx.restore();
+  }
+  if(dbg.checked){
+    ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(6,6,168,70);ctx.fillStyle='#9dffb0';ctx.font='12px ui-monospace,Menlo,monospace';ctx.textBaseline='top';
+    [`FPS ${fps.toFixed(0)}  frame ${ms.toFixed(1)} ms`,`scene ${S.name}`,`objects ${S.objs.length}`,`camera ${camera.x.toFixed(0)}, ${camera.y.toFixed(0)}`].forEach((t,i)=>ctx.fillText(t,12,12+i*15));
+  }
+}
+
+/* ---------- Game loop ---------- */
+function frame(t){
+  if(!running)return;raf=requestAnimationFrame(frame);
+  const t0=performance.now(),dt=Math.min((t-last)/1000,.05)||.016;last=t;fps+=(1/Math.max(dt,.001)-fps)*.1;
+  try{if(pending){const n=pending;pending=null;load(n)}update(dt);render()}catch(e){fail(e);stop()}
+  ms=performance.now()-t0;K.p.clear();K.r.clear();mouse.pressed=false;
+}
+function stop(){running=false;cancelAnimationFrame(raf)}
+function run(){
+  stop();con.textContent='';warned.clear();defs.clear();first=null;S=null;pending=null;
+  const api={W,H,scene,start,go,add,find,onCollide,onUpdate,bg,camera,key,mouse,log,play,rand};
+  try{
+    new Function(...Object.keys(api),'"use strict";\n'+ed.value)(...Object.values(api));
+    if(!first)throw new Error('Define a scene first: scene("main", () => { ... })');
+    load(first);
+  }catch(e){fail(e);return}
+  running=true;last=performance.now();raf=requestAnimationFrame(frame);cv.focus();
+}
+
+/* ---------- Editor and starter game ---------- */
+const STARTER=`// Mini Engine 2D: scenes, objects, input, physics, assets.
+// Import an image in the Assets panel, then add sprite: 'name.png'
+// to any object (click the asset name to insert it).
+
+scene('game', () => {
+  bg('#1b2a41');
+  let coins = 0;
+
+  // Solid platforms block objects that have body: true
+  add({ x: -200, y: 320, w: 1800, h: 60, color: '#3d5a80', solid: true });
+  add({ x: 220, y: 250, w: 120, h: 16, color: '#3d5a80', solid: true });
+  add({ x: 420, y: 190, w: 120, h: 16, color: '#3d5a80', solid: true });
+  add({ x: 640, y: 250, w: 120, h: 16, color: '#3d5a80', solid: true });
+
+  for (const [x, y] of [[260, 220], [470, 160], [690, 220], [900, 290], [1100, 290]]) {
+    add({ x, y, w: 16, h: 16, color: '#ffd166', tag: 'coin' });
+  }
+
+  const player = add({
+    x: 60, y: 200, w: 28, h: 36, color: '#ef476f',
+    tag: 'player', body: true, gravity: 900,
+    update(dt) {
+      const left = key.down('left') || key.down('a');
+      const right = key.down('right') || key.down('d');
+      this.vx = ((right ? 1 : 0) - (left ? 1 : 0)) * 200;
+      if ((key.pressed('up') || key.pressed('space') || key.pressed('w')) && this.grounded) this.vy = -430;
+      if (this.y > 600) go('game'); // fell off the world
+    }
+  });
+
+  const hud = add({ text: 'Coins: 0 / 5', x: 12, y: 30, size: 18, ui: true, layer: 10 });
+
+  onCollide('player', 'coin', (p, c) => {
+    c.destroy();
+    coins++;
+    hud.text = 'Coins: ' + coins + ' / 5';
+    if (coins === 5) go('win');
+  });
+
+  camera.follow(player, false);
+  log('Arrow keys or A/D to move, Up or Space to jump');
+});
+
+scene('win', () => {
+  bg('#073b4c');
+  add({ text: 'You win! Press Enter to play again', x: 150, y: 160, size: 22, ui: true });
+  onUpdate(() => { if (key.pressed('enter')) go('game'); });
+});
+`;
+const SK='mini-engine-2d-code';
+let saved=null;try{saved=localStorage.getItem(SK)}catch(e){}
+ed.value=saved||STARTER;
+ed.addEventListener('input',()=>{try{localStorage.setItem(SK,ed.value)}catch(e){}});
+ed.addEventListener('keydown',e=>{
+  if(e.key==='Tab'){e.preventDefault();ed.setRangeText('  ',ed.selectionStart,ed.selectionEnd,'end')}
+  if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();run()}
+});
+$('#run').onclick=run;
+$('#stop').onclick=()=>{stop();out('\u25A0 Stopped','i')};
+$('#reset').onclick=()=>{if(confirm('Replace your code with the starter game?')){ed.value=STARTER;try{localStorage.removeItem(SK)}catch(e){}}};
+Assets.draw();render();run();
+})();
+</script>
+</body>
+</html>
